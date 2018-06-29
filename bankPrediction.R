@@ -1,0 +1,106 @@
+
+train_data <- read.csv("train_bank_loan.csv",header =T,stringsAsFactors=F)
+head(train_data)
+str(train_data)
+summary(train_data)
+
+train_data$Education <- factor(train_data$Education, levels = c("Graduate","Not Graduate"))
+train_data$Property_Area <- factor(train_data$Property_Area, levels =c("Urban","Semiurban","Rural"))
+
+rep_YN <- function(myData){
+  ifelse(myData == "Y",1,0)
+}
+
+train_data$Loan_Status <- sapply(train_data$Loan_Status,rep_YN)
+
+train_data["Total_Income"] <- train_data$ApplicantIncome+train_data$CoapplicantIncome
+
+plot(train_data$Loan_Status,train_data$Total_Income)
+
+plot(train_data$LoanAmount, train_data$Total_Income)
+
+train_data["Loan_ratio"] <- train_data$LoanAmount/train_data$Loan_Amount_Term
+
+plot(train_data$Loan_ratio,train_data$Loan_Status)
+
+train_data["Inc_Loan"] <- train_data$LoanAmount/train_data$Total_Income
+
+plot(train_data$Loan_Status,train_data$Inc_Loan)
+
+a <- !is.na(train_data$LoanAmount)
+train_data <- train_data[a,]
+a<- !is.na(train_data$Loan_Amount_Term)
+train_data <- train_data[a,]
+
+train_data$Credit_History[is.na(train_data$Credit_History)] <- 0
+train_data$Credit_History <- factor(train_data$Credit_History, levels = c("1","0"))
+
+model <- glm(Loan_Status ~ Credit_History, family = binomial(link = 'logit'),data = train_data)
+
+summary(model)
+
+test_data <- read.csv("test_bank_loan.csv", TRUE, stringsAsFactors = FALSE)
+test_data$Property_Area <- factor(test_data$Property_Area, levels =c("Urban","Semiurban","Rural"))
+test_data$LoanAmount <- ifelse(is.na(test_data$LoanAmount),
+                               ave(test_data$LoanAmount, FUN = function(x) mean(x, na.rm = TRUE)),
+                               test_data$LoanAmount)
+test_data$Loan_Amount_Term <- ifelse(is.na(test_data$Loan_Amount_Term),
+                                     ave(test_data$Loan_Amount_Term, FUN = function(x) median(x, na.rm = TRUE)),
+                                     test_data$Loan_Amount_Term)
+summary(test_data)
+
+test_data["Total_Income"] <- test_data$ApplicantIncome+test_data$CoapplicantIncome
+
+test_data["Loan_ratio"] <- test_data$LoanAmount/test_data$Loan_Amount_Term
+
+test_data["Inc_Loan"] <- test_data$LoanAmount/test_data$Total_Income
+
+fill_ch <- function(myData)
+{
+  i <- is.na(myData$Credit_History)
+  n<- length(i)
+  mAppInc <- mean(myData$Inc_Loan)
+  mLoanRatio <- mean(myData$Loan_ratio)
+  count <- 0
+  index <- c(which(i))
+  
+  for(j in index){
+    if(myData$Inc_Loan[j] < mAppInc){
+      count = count+1
+    } 
+    
+    if(myData$Loan_ratio[j] < mLoanRatio){
+      count = count+1
+    } 
+    
+    if(myData$Education[j] == "Graduate" & myData$Self_Employed[j] == "No"){
+      count = count+1
+    }
+    
+    if(count >= 2){
+      myData$Credit_History[j] <- 1
+    }
+    else{
+      myData$Credit_History[j] <- 0
+    }
+  }
+  
+  return(myData)
+}
+
+
+test_data <- fill_ch(test_data)
+
+Credit_History <- factor(test_data$Credit_History, levels = c("1","0"))
+names(Credit_History) <- c("Credit_History")
+fit <- predict(model,Credit_History)
+
+rmse <- function(error)
+{
+  (sqrt(mean(error^2)))
+}
+rmse(model$residuals)
+fit <- ifelse(fit > 0.5,"Y","N")
+answer <- data.frame(test_data$Loan_ID,fit)
+names(answer) <- c("Loan_ID", "Loan_Status")
+write.csv(answer, file ='C:/Users/abhik/Desktop/Practice/loan_prediction.csv', row.names = FALSE)
